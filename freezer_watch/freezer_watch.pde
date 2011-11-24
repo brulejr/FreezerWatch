@@ -9,6 +9,8 @@
 #define DPIN_LED 11
 #define DPIN_LCD_TX 6
 #define DPIN_LCD_RX 5
+#define DPIN_HALL_PWR 3
+#define DPIN_HALL_DATA 4
 #define APIN_PHOTOCELL 0
 #define DELAY 100
 
@@ -17,14 +19,14 @@
 
 OneWire oneWire(DPIN_ONE_WIRE);
 DallasTemperature sensors(&oneWire);
-DeviceAddress insideThermometer  = { 0x28, 0xC3, 0x42, 0x77, 0x03, 0x00, 0x00, 0x78 };
+DeviceAddress insideThermometer  = { 0x28, 0x5F, 0x7F, 0x77, 0x03, 0x00, 0x00, 0xDC };
 DeviceAddress outsideThermometer = { 0x28, 0x57, 0x6B, 0x77, 0x03, 0x00, 0x00, 0x1E };
 
 LCD117 lcd = LCD117(LCD_NUM_COLS, LCD_NUM_ROWS);
 
 RTC_DS1307 rtc;
 
-int brightness;
+int brightness, hallEffect;
 float tempInsideC, tempOutsideC;
 
 char buffer[20];
@@ -40,10 +42,14 @@ void setup(void) {
   
   sensors.begin();
   
+  pinMode(DPIN_HALL_PWR, OUTPUT); 
+  pinMode(DPIN_HALL_DATA, INPUT); 
+  
   rtc.begin();
-  if (! rtc.isrunning()) {
+  if (!rtc.isrunning()) {
     //rtc.adjust(DateTime(__DATE__, __TIME__));
   }
+  
 }
 
 void loop(void) {
@@ -51,12 +57,16 @@ void loop(void) {
   brightness = readPhotocell(APIN_PHOTOCELL);
   analogWrite(DPIN_LED, brightness);
   
+  hallEffect = readHallEffectSensor(DPIN_HALL_PWR, DPIN_HALL_DATA);
+  
   sensors.requestTemperatures();
   tempInsideC = readTempAsC(insideThermometer);
   tempOutsideC = readTempAsC(outsideThermometer);
   
   Serial.print("Reading = ");
   Serial.print(brightness);
+  Serial.print(", ");
+  Serial.print(hallEffect);
   Serial.print(", in=");
   Serial.print(tempInsideC);
   Serial.print("C (");
@@ -88,13 +98,23 @@ void loop(void) {
   }
 
   lcd.setCursor(12, 1);
-  if (brightness <= 25) {
-    lcd.print("    ");
-  } else {
+  if (hallEffect == 0 || brightness > 25) {
     lcd.print("OPEN");
+  } else if (brightness > 10) {
+    lcd.print("AJAR");
+  } else {
+    lcd.print("    ");
   }
   
   delay(DELAY);
+}
+
+int readHallEffectSensor(int powerPin, int dataPin) {
+  digitalWrite(powerPin, HIGH);
+  delay(50);
+  int val = digitalRead(dataPin);
+  digitalWrite(powerPin, LOW);
+  return val;
 }
 
 int readPhotocell(int photocellPin) {
