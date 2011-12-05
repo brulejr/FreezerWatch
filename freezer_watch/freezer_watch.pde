@@ -5,12 +5,15 @@
 #include <LCD117.h>
 #include <RTClib.h>
 
+#include "pitches.h"
+
 #define DPIN_ONE_WIRE 2
 #define DPIN_LED 11
 #define DPIN_LCD_TX 6
 #define DPIN_LCD_RX 5
 #define DPIN_HALL_PWR 3
 #define DPIN_HALL_DATA 4
+#define DPIN_BUZZER 9
 #define APIN_PHOTOCELL 0
 #define DELAY 100
 
@@ -29,26 +32,33 @@ RTC_DS1307 rtc;
 int brightness, hallEffect;
 float tempInsideC, tempOutsideC;
 
+int melody[] = { NOTE_C4, NOTE_G3,NOTE_G3, NOTE_A3, NOTE_G3,0, NOTE_B3, NOTE_C4 };
+int noteDurations[] = { 4, 8, 8, 4, 4, 4, 4, 4 };
 char buffer[20];
 
 void setup(void) {
   Serial.begin(57600);
   
-  Wire.begin();
-  
   lcd.begin(DPIN_LCD_TX, DPIN_LCD_RX);
   lcd.clearLCD();
   lcd.hideCursor();
-  
+  lcd.setCursor(0, 0);
+  lcd.print("Starting");
+
+  rtc.begin();
+  if (!rtc.isrunning()) {
+    //rtc.adjust(DateTime(__DATE__, __TIME__));
+  }
+  lcd.setCursor(11, 0);
+  printTime();
+
+  Wire.begin();
   sensors.begin();
   
   pinMode(DPIN_HALL_PWR, OUTPUT); 
   pinMode(DPIN_HALL_DATA, INPUT); 
   
-  rtc.begin();
-  if (!rtc.isrunning()) {
-    //rtc.adjust(DateTime(__DATE__, __TIME__));
-  }
+  pinMode(DPIN_BUZZER, OUTPUT);
   
 }
 
@@ -86,8 +96,34 @@ void loop(void) {
   lcd.print(dtostrf(DallasTemperature::toFahrenheit(tempOutsideC), 5, 1, buffer));
   lcd.print("F");
   
-  DateTime now = rtc.now();
   lcd.setCursor(11, 0);
+  printTime();
+
+  lcd.setCursor(12, 1);
+  if (hallEffect == 0 || brightness > 25) {
+    lcd.print("OPEN");
+    alert(DPIN_BUZZER);
+  } else if (brightness > 10) {
+    lcd.print("AJAR");
+  } else {
+    lcd.print("    ");
+  }
+  
+  delay(DELAY);
+}
+
+void alert(int buzzerPin) {
+  for (int thisNote = 0; thisNote < 8; thisNote++) {
+    int noteDuration = 1000/noteDurations[thisNote];
+    tone(buzzerPin, melody[thisNote],noteDuration);
+    int pauseBetweenNotes = noteDuration * 1.30;
+    delay(pauseBetweenNotes);
+    noTone(buzzerPin);
+  }  
+}
+
+void printTime() {
+  DateTime now = rtc.now();
   lcd.print(dtostrf(now.hour(), 2, 0, buffer));
   lcd.print(":");
   if (now.minute() < 10) { 
@@ -96,17 +132,6 @@ void loop(void) {
   } else {
     lcd.print(dtostrf(now.minute(), 2, 0, buffer));
   }
-
-  lcd.setCursor(12, 1);
-  if (hallEffect == 0 || brightness > 25) {
-    lcd.print("OPEN");
-  } else if (brightness > 10) {
-    lcd.print("AJAR");
-  } else {
-    lcd.print("    ");
-  }
-  
-  delay(DELAY);
 }
 
 int readHallEffectSensor(int powerPin, int dataPin) {
